@@ -1,0 +1,9 @@
+# Bỏ qua thư mục hệ thống của Visual Studio
+.vs/
+
+# Bỏ qua thư mục chứa file biên dịch (build)
+out/
+build/
+
+# Bỏ qua các file cấu hình tự sinh khác (nếu có)
+*.user
