@@ -2,6 +2,7 @@
 #include <iostream>
 #include <csignal>
 #include <cstdlib>
+#include <string>
 
 TCPServer* g_serverPtr = nullptr;
 
@@ -22,17 +23,48 @@ void handleSignal(int signal) {
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     std::signal(SIGINT, handleSignal);
 
-    const int PORT = 8080;
-    std::cout << "==================================================" << std::endl;
-    std::cout << "     HYBRID FTP SERVER - TCP CONTROL CHANNEL      " << std::endl;
-    std::cout << "     System: POSIX Threads (pthread) Multi-thread " << std::endl;
-    std::cout << "==================================================" << std::endl;
-    std::cout << "[KHỞI ĐỘNG] Khởi tạo TCP Server tại Port: " << PORT << "..." << std::endl;
+    int port = 0;
 
-    g_serverPtr = new TCPServer(PORT);
+    if (argc >= 2) {
+        try {
+            port = std::stoi(argv[1]);
+        } catch (...) {
+            port = 0;
+        }
+    }
+
+    if (port <= 0 || port > 65535) {
+        std::cout << "==================================================" << std::endl;
+        std::cout << "     HYBRID FTP SERVER - TCP CONTROL CHANNEL      " << std::endl;
+        std::cout << "     System: POSIX Threads (pthread) Multi-thread " << std::endl;
+        std::cout << "==================================================" << std::endl;
+        std::cout << "Nhập số Port lắng nghe (Ấn Enter để dùng mặc định 8080): ";
+        
+        std::string inputPort;
+        std::getline(std::cin, inputPort);
+
+        if (inputPort.empty()) {
+            port = 8080;
+        } else {
+            try {
+                port = std::stoi(inputPort);
+            } catch (...) {
+                port = 8080;
+            }
+        }
+    } else {
+        std::cout << "==================================================" << std::endl;
+        std::cout << "     HYBRID FTP SERVER - TCP CONTROL CHANNEL      " << std::endl;
+        std::cout << "     System: POSIX Threads (pthread) Multi-thread " << std::endl;
+        std::cout << "==================================================" << std::endl;
+    }
+
+    std::cout << "[KHỞI ĐỘNG] Khởi tạo TCP Server tại Port: " << port << "..." << std::endl;
+
+    g_serverPtr = new TCPServer(port);
 
     if (!g_serverPtr->start()) {
         std::cerr << "[LỖI TẬP TRUNG] Không thể khởi chạy Server!" << std::endl;

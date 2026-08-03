@@ -3,12 +3,47 @@
 #include <iostream>
 #include <string>
 
-int main() {
+int main(int argc, char* argv[]) {
     TCPClient client;
-    std::string serverIP = "127.0.0.1";
-    int serverPort = 8080;
+    std::string serverIP = "";
+    int serverPort = 0;
+
+    if (argc >= 2) {
+        serverIP = argv[1];
+    }
+    if (argc >= 3) {
+        try {
+            serverPort = std::stoi(argv[2]);
+        } catch (...) {
+            serverPort = 0;
+        }
+    }
 
     UIManager::printHeader();
+
+    if (serverIP.empty()) {
+        std::cout << "Nhập IP Server (Ấn Enter để dùng 127.0.0.1): ";
+        std::getline(std::cin, serverIP);
+        if (serverIP.empty()) {
+            serverIP = "127.0.0.1";
+        }
+    }
+
+    if (serverPort <= 0 || serverPort > 65535) {
+        std::cout << "Nhập Port Server (Ấn Enter để dùng 8080): ";
+        std::string inputPort;
+        std::getline(std::cin, inputPort);
+        if (inputPort.empty()) {
+            serverPort = 8080;
+        } else {
+            try {
+                serverPort = std::stoi(inputPort);
+            } catch (...) {
+                serverPort = 8080;
+            }
+        }
+    }
+
     std::cout << "Đang kết nối tới Server (" << serverIP << ":" << serverPort << ")..." << std::endl;
 
     if (!client.connectToServer(serverIP, serverPort)) {
@@ -17,7 +52,6 @@ int main() {
         return 1;
     }
 
-    // Nhận mã chào mừng (220) từ server
     std::cout << client.receiveReply();
 
     std::string inputCommand;
@@ -32,17 +66,14 @@ int main() {
             continue;
         }
 
-        // Gửi lệnh qua TCP
         if (!client.sendCommand(inputCommand)) {
             std::cout << "[LỖI] Mất kết nối tới Server!\n";
             break;
         }
 
-        // Nhận phản hồi từ server
         std::string response = client.receiveReply();
         std::cout << response;
 
-        // Lệnh QUIT -> ngắt vòng lặp
         if (inputCommand == "QUIT" || inputCommand == "quit") {
             break;
         }
