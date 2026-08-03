@@ -2,12 +2,20 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
 
-bool rdt_send_file(int sockfd, const char* filename, const char* dest_ip, int dest_port) {
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
+    #typedef int ssize_t;
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+#endif
+
+bool rdt_send_file(SOCKET sockfd, const char* filename, const char* dest_ip, int dest_port) {
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
         std::cerr << "[RDT Sender] Lỗi: Không thể mở file " << filename << std::endl;
@@ -21,10 +29,17 @@ bool rdt_send_file(int sockfd, const char* filename, const char* dest_ip, int de
     inet_pton(AF_INET, dest_ip, &dest_addr.sin_addr);
 
     // Cấu hình Timeout nhận ACK cho Socket
+#._WIN32
+    // Windows dùng đơn vị milliseconds (DWORD) cho SO_RCVTIMEO
+    DWORD timeout_ms = TIMEOUT_SEC * 1000;
+    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout_ms, sizeof(timeout_ms));
+#else
+    // Linux dùng struct timeval
     timeval tv;
     tv.tv_sec = TIMEOUT_SEC;
     tv.tv_usec = 0;
     setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#endif
 
     uint32_t seq_num = 0;
     RDTPacket packet;
@@ -52,30 +67,30 @@ bool rdt_send_file(int sockfd, const char* filename, const char* dest_ip, int de
         // Vòng lặp Stop-and-Wait với Retransmission
         while (!ack_received && retries < MAX_RETRIES) {
             // Send Data
-            sendto(sockfd, &packet, total_pkt_size, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
-            std::cout << "[RDT Sender] Da gui Goi #" << seq_num << " (" << bytes_read << " bytes). Dang cho ACK..." << std::endl;
+            sendto(sockfd, (const char*)&packet, total_pkt_size, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
+            std::cout << "[RDT Sender] Đã gửi Gói #" << seq_num << " (" << bytes_read << " bytes). Đang chờ ACK..." << std::endl;
 
             // Chờ nhận ACK
-            ssize_t recv_bytes = recvfrom(sockfd, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&ack_addr, &addr_len);
+            int recv_bytes = recvfrom(sockfd, (char*)&ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&ack_addr, &addr_len);
 
-            if (recv_bytes >= (ssize_t)sizeof(RDTHeader)) {
+            if (recv_bytes >= (int)sizeof(RDTHeader)) {
                 // Kiểm tra checksum của gói ACK
                 uint16_t recv_chk = ack_packet.header.checksum;
                 ack_packet.header.checksum = 0;
                 uint16_t calc_chk = calculate_checksum(&ack_packet, sizeof(RDTHeader));
 
                 if (recv_chk == calc_chk && ack_packet.header.is_ack == 1 && ack_packet.header.seq_num == seq_num) {
-                    std::cout << "[RDT Sender] Nhan ACK hop le cho Goi #" << seq_num << std::endl;
+                    std::cout << "[RDT Sender] Nhận ACK hợp lệ cho Gói #" << seq_num << std::endl;
                     ack_received = true;
                     seq_num++; // Tăng Sequence Number cho gói tiếp theo
                 }
                 else {
-                    std::cout << "[RDT Sender] ACK bi loi Checksum hoac sai Sequence Number! Gui lai..." << std::endl;
+                    std::cout << "[RDT Sender] ACK bị lỗi Checksum hoặc sai Sequence Number! Gửi lại..." << std::endl;
                 }
             }
             else {
                 // Hết hạn chờ (Timeout)
-                std::cout << "[RDT Sender] Timeout! Khong nhan duoc ACK gói #" << seq_num << ". Dang gui lai lần " << (retries + 1) << "..." << std::endl;
+                std::cout << "[RDT Sender] Timeout! Không nhận được ACK gói #" << seq_num << ". Đang gửi lại lần " << (retries + 1) << "..." << std::endl;
                 retries++;
             }
         }
@@ -91,7 +106,7 @@ bool rdt_send_file(int sockfd, const char* filename, const char* dest_ip, int de
         }
     }
 
-    std::cout << "[RDT Sender] Truyen file thanh cong!" << std::endl;
+    std::cout << "[RDT Sender] Truyền file thành công!" << std::endl;
     file.close();
     return true;
 }
