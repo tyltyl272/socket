@@ -18,6 +18,9 @@ bool TCPClient::connectToServer(const std::string& ip, int port) {
         return false;
     }
 
+    DWORD timeout = 3000;
+    setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
+
     sockaddr_in serverAddr;
     serverAddr.sin_family = AF_INET;
     serverAddr.sin_port = htons(port);
@@ -42,13 +45,21 @@ bool TCPClient::sendCommand(const std::string& command) {
 
 std::string TCPClient::receiveReply() {
     if (!isConnected || clientSocket == INVALID_SOCKET) return "";
+
     char buffer[2048];
     memset(buffer, 0, sizeof(buffer));
-    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
 
+    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
     if (bytesReceived > 0) {
         return std::string(buffer);
+    } else if (bytesReceived == 0) {
+        isConnected = false;
+        return "";
     } else {
+        int err = WSAGetLastError();
+        if (err == WSAETIMEDOUT) {
+            return "";
+        }
         isConnected = false;
         return "";
     }

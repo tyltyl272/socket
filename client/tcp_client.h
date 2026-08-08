@@ -13,9 +13,12 @@ private:
 public:
     TCPClient();
     ~TCPClient();
+
     bool connectToServer(const std::string& ip, int port);
     bool sendCommand(const std::string& command);
-    std::string receiveReply();
+    
+    std::string receiveReply(); 
+    
     void disconnect();
     bool checkConnection() const { return isConnected; }
 };
