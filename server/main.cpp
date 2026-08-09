@@ -4,27 +4,34 @@
 #include <cstdlib>
 #include <string>
 
+#ifdef _WIN32
+    #include <winsock2.h>
+    #pragma comment(lib, "ws2_32.lib")
+#endif
+
+volatile std::sig_atomic_t g_running = 1;
 TCPServer* g_serverPtr = nullptr;
 
 void handleSignal(int signal) {
-    if (signal == SIGINT) {
-        std::cout << "\n\n==================================================" << std::endl;
-        std::cout << "[HỆ THỐNG] Nhận tín hiệu ngắt Ctrl+C từ người dùng." << std::endl;
-        std::cout << "[HỆ THỐNG] Đang đóng Socket và giải phóng tài nguyên Server..." << std::endl;
-
+    if (signal == SIGINT || signal == SIGTERM) {
+        g_running = 0;
         if (g_serverPtr != nullptr) {
-            delete g_serverPtr;
-            g_serverPtr = nullptr;
+            g_serverPtr->stop();
         }
-
-        std::cout << "[HỆ THỐNG] Server đã dừng an toàn. Tạm biệt!" << std::endl;
-        std::cout << "==================================================" << std::endl;
-        std::exit(EXIT_SUCCESS);
     }
 }
 
 int main(int argc, char* argv[]) {
     std::signal(SIGINT, handleSignal);
+    std::signal(SIGTERM, handleSignal);
+
+#ifdef _WIN32
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "[LỖI TẬP TRUNG] Khởi tạo Winsock thất bại!" << std::endl;
+        return EXIT_FAILURE;
+    }
+#endif
 
     int port = 0;
 
@@ -36,23 +43,23 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (port <= 0 || port > 65535) {
+    if (port < 1024 || port > 65535) {
         std::cout << "==================================================" << std::endl;
         std::cout << "     HYBRID FTP SERVER - TCP CONTROL CHANNEL      " << std::endl;
         std::cout << "     System: POSIX Threads (pthread) Multi-thread " << std::endl;
         std::cout << "==================================================" << std::endl;
-        std::cout << "Nhập số Port lắng nghe (Ấn Enter để dùng mặc định 8080): ";
+        std::cout << "Nhập số Port lắng nghe (Ấn Enter để dùng mặc định 8888): ";
         
         std::string inputPort;
         std::getline(std::cin, inputPort);
 
         if (inputPort.empty()) {
-            port = 8080;
+            port = 8888;
         } else {
             try {
                 port = std::stoi(inputPort);
             } catch (...) {
-                port = 8080;
+                port = 8888;
             }
         }
     } else {
@@ -60,6 +67,11 @@ int main(int argc, char* argv[]) {
         std::cout << "     HYBRID FTP SERVER - TCP CONTROL CHANNEL      " << std::endl;
         std::cout << "     System: POSIX Threads (pthread) Multi-thread " << std::endl;
         std::cout << "==================================================" << std::endl;
+    }
+
+    if (port < 1024 || port > 65535) {
+        std::cout << "[CẢNH BÁO] Port không hợp lệ hoặc thuộc dải Privileged (1-1023). Tự động đặt về 8888.\n";
+        port = 8888;
     }
 
     std::cout << "[KHỞI ĐỘNG] Khởi tạo TCP Server tại Port: " << port << "..." << std::endl;
@@ -70,13 +82,26 @@ int main(int argc, char* argv[]) {
         std::cerr << "[LỖI TẬP TRUNG] Không thể khởi chạy Server!" << std::endl;
         delete g_serverPtr;
         g_serverPtr = nullptr;
+#ifdef _WIN32
+        WSACleanup();
+#endif
         return EXIT_FAILURE;
     }
+
+    std::cout << "\n==================================================" << std::endl;
+    std::cout << "[HỆ THỐNG] Đang giải phóng tài nguyên Server..." << std::endl;
 
     if (g_serverPtr != nullptr) {
         delete g_serverPtr;
         g_serverPtr = nullptr;
     }
+
+#ifdef _WIN32
+    WSACleanup();
+#endif
+
+    std::cout << "[HỆ THỐNG] Server đã dừng an toàn. Tạm biệt!" << std::endl;
+    std::cout << "==================================================" << std::endl;
 
     return EXIT_SUCCESS;
 }

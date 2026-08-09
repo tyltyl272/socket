@@ -30,16 +30,16 @@ int main(int argc, char* argv[]) {
     }
 
     if (serverPort <= 0 || serverPort > 65535) {
-        std::cout << "Nhập Port Server (Ấn Enter để dùng 8080): ";
+        std::cout << "Nhập Port Server (Ấn Enter để dùng 8888): ";
         std::string inputPort;
         std::getline(std::cin, inputPort);
         if (inputPort.empty()) {
-            serverPort = 8080;
+            serverPort = 8888;
         } else {
             try {
                 serverPort = std::stoi(inputPort);
             } catch (...) {
-                serverPort = 8080;
+                serverPort = 8888;
             }
         }
     }
@@ -52,7 +52,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    std::cout << client.receiveReply();
+    std::string welcomeMsg = client.receiveReply();
+    if (!welcomeMsg.empty()) {
+        std::cout << welcomeMsg;
+    }
 
     std::string inputCommand;
     while (client.checkConnection()) {
@@ -72,7 +75,9 @@ int main(int argc, char* argv[]) {
         }
 
         std::string response = client.receiveReply();
-        std::cout << response;
+        if (!response.empty()) {
+            std::cout << response;
+        }
 
         if (inputCommand == "QUIT" || inputCommand == "quit") {
             break;

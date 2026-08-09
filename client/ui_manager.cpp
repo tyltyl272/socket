@@ -1,6 +1,8 @@
 #include "ui_manager.h"
 #include <iostream>
 #include <iomanip>
+#include <sstream>
+#include <cmath>
 
 void UIManager::printHeader() {
     std::cout << "===========================================\n";
@@ -51,11 +53,26 @@ void UIManager::printHelp() {
     std::cout << "--------------------------------------------------------------\n\n";
 }
 
+static std::string formatSize(long long bytes) {
+    if (bytes < 1024) return std::to_string(bytes) + " B";
+    if (bytes < 1024 * 1024) {
+        std::stringstream ss;
+        ss << std::fixed << std::setprecision(1) << (bytes / 1024.0) << " KB";
+        return ss.str();
+    }
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0)) << " MB";
+    return ss.str();
+}
+
 void UIManager::printProgressBar(long long currentBytes, long long totalBytes) {
     if (totalBytes <= 0) return;
-    int barWidth = 40;
-    float progress = (float)currentBytes / totalBytes;
-    int pos = (int)(barWidth * progress);
+    
+    int barWidth = 35;
+    float progress = static_cast<float>(currentBytes) / totalBytes;
+    if (progress > 1.0f) progress = 1.0f;
+    
+    int pos = static_cast<int>(barWidth * progress);
 
     std::cout << "\r[";
     for (int i = 0; i < barWidth; ++i) {
@@ -63,10 +80,12 @@ void UIManager::printProgressBar(long long currentBytes, long long totalBytes) {
         else if (i == pos) std::cout << ">";
         else std::cout << " ";
     }
-    std::cout << "] " << (int)(progress * 100.0) << "% ("
-              << currentBytes << "/" << totalBytes << " bytes)" << std::flush;
+    
+    std::cout << "] " << std::setw(3) << static_cast<int>(progress * 100.0f) << "% ("
+              << formatSize(currentBytes) << " / " << formatSize(totalBytes) << ")" 
+              << std::flush;
 
     if (currentBytes >= totalBytes) {
-        std::cout << std::endl;
+        std::cout << " - Hoàn tất!\n";
     }
 }

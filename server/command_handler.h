@@ -9,14 +9,14 @@ class CommandHandler {
 private:
     SOCKET clientSocket;
     sockaddr_in clientAddr;
-    
     bool isAuthenticated;
     std::string currentUsername;
     std::string currentDir;
+    std::string renameFromPath;
+    int dataUdpPort;
 
     void sendReply(const std::string& reply);
     std::string trim(const std::string& str);
-
     void handleUSER(const std::string& param);
     void handlePASS(const std::string& param);
     void handlePWD();
@@ -25,13 +25,11 @@ private:
     void handleQUIT();
     void handleRETR(const std::string& param);
     void handleSTOR(const std::string& param);
-
     std::string calculateFileHash(const std::string& filePath);
 
 public:
     CommandHandler(SOCKET socket, sockaddr_in addr);
     ~CommandHandler();
-
     void processCommands();
 };
 
