@@ -1,0 +1,21 @@
+# Executables & Binaries (File chạy và bộ nhớ đệm)
+*.exe
+*.out
+*.o
+*.obj
+*.pdb
+*.ilk
+
+# Visual Studio / VS Code build artifacts
+.vs/
+.vscode/
+bin/
+obj/
+x64/
+Debug/
+Release/
+
+# Test output files (File dữ liệu sinh ra khi test truyền nhận)
+received_*
+output_*
+*.tmp
