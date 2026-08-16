@@ -1,5 +1,6 @@
 #include "tcp_client.h"
 #include <iostream>
+#include <ws2tcpip.h>
 
 TCPClient::TCPClient() : clientSocket(INVALID_SOCKET), isConnected(false) {
     WSADATA wsaData;
@@ -17,6 +18,9 @@ bool TCPClient::connectToServer(const std::string& ip, int port) {
         std::cerr << "[LỖI] Không thể tạo Socket Client!\n";
         return false;
     }
+
+    char nodelayOpt = 1;
+    setsockopt(clientSocket, IPPROTO_TCP, TCP_NODELAY, &nodelayOpt, sizeof(nodelayOpt));
 
     DWORD timeout = 3000;
     setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
@@ -46,23 +50,33 @@ bool TCPClient::sendCommand(const std::string& command) {
 std::string TCPClient::receiveReply() {
     if (!isConnected || clientSocket == INVALID_SOCKET) return "";
 
+    std::string fullResponse = "";
     char buffer[2048];
-    memset(buffer, 0, sizeof(buffer));
 
-    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
-    if (bytesReceived > 0) {
-        return std::string(buffer);
-    } else if (bytesReceived == 0) {
-        isConnected = false;
-        return "";
-    } else {
-        int err = WSAGetLastError();
-        if (err == WSAETIMEDOUT) {
-            return "";
+    while (true) {
+        memset(buffer, 0, sizeof(buffer));
+        int bytesReceived = recv(clientSocket, buffer, sizeof(buffer) - 1, 0);
+
+        if (bytesReceived > 0) {
+            fullResponse += buffer;
+            if (fullResponse.find('\n') != std::string::npos) {
+                break;
+            }
+        } else if (bytesReceived == 0) {
+            isConnected = false;
+            break;
+        } else {
+            int err = WSAGetLastError();
+            if (err == WSAETIMEDOUT) {
+                if (!fullResponse.empty()) break;
+                return "";
+            }
+            isConnected = false;
+            break;
         }
-        isConnected = false;
-        return "";
     }
+
+    return fullResponse;
 }
 
 void TCPClient::disconnect() {
@@ -78,15 +92,21 @@ bool TCPClient::checkConnection() {
         return false;
     }
 
+    u_long mode = 1;
+    ioctlsocket(clientSocket, FIONBIO, &mode);
+
     char dummyBuffer;
     int res = recv(clientSocket, &dummyBuffer, 1, MSG_PEEK);
+    int err = WSAGetLastError();
+
+    mode = 0;
+    ioctlsocket(clientSocket, FIONBIO, &mode);
 
     if (res == 0) {
         isConnected = false;
         return false;
     } 
     else if (res == SOCKET_ERROR) {
-        int err = WSAGetLastError();
         if (err != WSAEWOULDBLOCK && err != WSAETIMEDOUT) {
             isConnected = false;
             return false;

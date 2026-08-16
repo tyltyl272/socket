@@ -3,17 +3,37 @@
 #include <iomanip>
 #include <sstream>
 #include <cmath>
+#include <mutex>
 #include <windows.h>
 
+#define COLOR_RESET   "\033[0m"
+#define COLOR_GREEN   "\033[1;32m"
+#define COLOR_YELLOW  "\033[1;33m"
+#define COLOR_RED     "\033[1;31m"
+
+static void enableVTModeOnce() {
+    static std::once_flag flag;
+    std::call_once(flag, []() {
+        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (hOut != INVALID_HANDLE_VALUE) {
+            DWORD dwMode = 0;
+            if (GetConsoleMode(hOut, &dwMode)) {
+                SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+            }
+        }
+    });
+}
+
 void UIManager::printHeader() {
+    enableVTModeOnce();
     std::cout << "===========================================\n";
     std::cout << "        HYBRID FTP CLIENT TCP CONTROL      \n";
     std::cout << "===========================================\n";
-    std::cout << " Gõ 'HELP' để xem danh sách các lệnh hỗ trợ.\n\n";
+    std::cout << " Gõ 'HELP' để xem danh sách các lệnh hỗ trợ.\n\n" << std::flush;
 }
 
 void UIManager::printPrompt() {
-    std::cout << "ftp> ";
+    std::cout << "ftp> " << std::flush;
 }
 
 void UIManager::printHelp() {
@@ -51,7 +71,7 @@ void UIManager::printHelp() {
     std::cout << "  MODE <S/C/B>      : Đặt chế độ truyền dữ liệu\n";
     std::cout << "  PASV / PORT       : Chuyển đổi chế độ Passive / Active\n";
     std::cout << "  STAT              : Xem trạng thái hoạt động của Server\n";
-    std::cout << "--------------------------------------------------------------\n\n";
+    std::cout << "--------------------------------------------------------------\n\n" << std::flush;
 }
 
 static std::string formatSize(long long bytes) {
@@ -87,38 +107,36 @@ void UIManager::printProgressBar(long long currentBytes, long long totalBytes) {
               << std::flush;
 
     if (currentBytes >= totalBytes) {
-        std::cout << " - Hoàn tất!\n";
+        std::cout << " - Hoàn tất!\n" << std::flush;
     }
 }
 
 void UIManager::printResponse(const std::string& response) {
     if (response.empty()) return;
 
-    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
-    
-    CONSOLE_SCREEN_BUFFER_INFO consoleInfo;
-    GetConsoleScreenBufferInfo(hConsole, &consoleInfo);
-    WORD defaultAttributes = consoleInfo.wAttributes;
+    enableVTModeOnce();
 
     int code = 0;
-    if (response.length() >= 3 && std::isdigit(response[0])) {
-        code = std::stoi(response.substr(0, 3));
+    size_t firstDigit = response.find_first_of("0123456789");
+    if (firstDigit != std::string::npos && firstDigit + 2 < response.length()) {
+        try {
+            code = std::stoi(response.substr(firstDigit, 3));
+        } catch (...) {
+            code = 0;
+        }
     }
 
     if (code >= 200 && code < 300) {
-        // Mã 2xx: Thành công -> Màu Xanh Lá (Green)
-        SetConsoleTextAttribute(hConsole, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+        std::cout << COLOR_GREEN;
     } 
     else if (code >= 300 && code < 400) {
-        // Mã 3xx: Chờ thêm thông tin (như PASS) -> Màu Vàng (Yellow = Red + Green)
-        SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+        std::cout << COLOR_YELLOW;
     } 
     else if (code >= 400 && code < 600) {
-        // Mã 4xx / 5xx: Lỗi hệ thống / Lệnh thất bại -> Màu Đỏ (Red)
-        SetConsoleTextAttribute(hConsole, FOREGROUND_RED | FOREGROUND_INTENSITY);
+        std::cout << COLOR_RED;
     } 
     else {
-        SetConsoleTextAttribute(hConsole, defaultAttributes);
+        std::cout << COLOR_RESET;
     }
 
     std::cout << response;
@@ -126,5 +144,5 @@ void UIManager::printResponse(const std::string& response) {
         std::cout << "\n";
     }
 
-    SetConsoleTextAttribute(hConsole, defaultAttributes);
+    std::cout << COLOR_RESET << std::flush;
 }

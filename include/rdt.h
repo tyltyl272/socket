@@ -30,8 +30,8 @@ struct RDTPacket {
 
 uint16_t calculate_checksum(const void* data, size_t length);
 
-bool rdt_send_file(SOCKET socket, const char* filePath, const char* destIP, int destPort);
+bool rdt_send_file(SOCKET sockfd, const char* filename, const char* dest_ip, int dest_port);
 
-bool rdt_receive_file(SOCKET socket, const char* savePath);
+bool rdt_receive_file(SOCKET sockfd, const char* save_filename);
 
 #endif
