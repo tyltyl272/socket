@@ -10,6 +10,23 @@
 
 namespace fs = std::filesystem;
 
+static std::string formatSize(uintmax_t bytes) {
+    if (bytes < 1024) return std::to_string(bytes) + " B";
+    
+    std::stringstream ss;
+    if (bytes < 1024 * 1024) {
+        ss << std::fixed << std::setprecision(1) << (bytes / 1024.0) << " KB";
+        return ss.str();
+    }
+    if (bytes < 1024ULL * 1024 * 1024) {
+        ss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0)) << " MB";
+        return ss.str();
+    }
+    
+    ss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0 * 1024.0)) << " GB";
+    return ss.str();
+}
+
 CommandHandler::CommandHandler(SOCKET socket, sockaddr_in addr)
     : clientSocket(socket), clientAddr(addr), isAuthenticated(false), dataUdpPort(0) {
     
@@ -269,7 +286,8 @@ void CommandHandler::handleLIST() {
             if (entry.is_directory()) {
                 fileList += "[DIR] " + name + "\r\n";
             } else {
-                fileList += "[FILE] " + name + " (" + std::to_string(entry.file_size()) + " bytes)\r\n";
+                // Đã chuyển đổi từ bytes thô sang format dung lượng B/KB/MB/GB đẹp mắt
+                fileList += "[FILE] " + name + " (" + formatSize(entry.file_size()) + ")\r\n";
             }
         }
         fileList += "226 Directory send OK\r\n";

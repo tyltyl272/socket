@@ -4,6 +4,7 @@
 #include <sstream>
 #include <cmath>
 #include <mutex>
+#include <cctype>
 #include <windows.h>
 
 #define COLOR_RESET   "\033[0m"
@@ -76,13 +77,18 @@ void UIManager::printHelp() {
 
 static std::string formatSize(long long bytes) {
     if (bytes < 1024) return std::to_string(bytes) + " B";
+    
+    std::stringstream ss;
     if (bytes < 1024 * 1024) {
-        std::stringstream ss;
         ss << std::fixed << std::setprecision(1) << (bytes / 1024.0) << " KB";
         return ss.str();
     }
-    std::stringstream ss;
-    ss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0)) << " MB";
+    if (bytes < 1024LL * 1024 * 1024) {
+        ss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0)) << " MB";
+        return ss.str();
+    }
+    
+    ss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0 * 1024.0)) << " GB";
     return ss.str();
 }
 
@@ -116,33 +122,40 @@ void UIManager::printResponse(const std::string& response) {
 
     enableVTModeOnce();
 
-    int code = 0;
-    size_t firstDigit = response.find_first_of("0123456789");
-    if (firstDigit != std::string::npos && firstDigit + 2 < response.length()) {
-        try {
-            code = std::stoi(response.substr(firstDigit, 3));
-        } catch (...) {
-            code = 0;
+    std::stringstream ss(response);
+    std::string line;
+
+    while (std::getline(ss, line)) {
+        if (line.empty()) continue;
+
+        int code = 0;
+        
+        if (line.length() >= 3 && std::isdigit(line[0]) && std::isdigit(line[1]) && std::isdigit(line[2])) {
+            try {
+                code = std::stoi(line.substr(0, 3));
+            } catch (...) {
+                code = 0;
+            }
         }
+
+        if (code >= 100 && code < 200) {
+            std::cout << COLOR_YELLOW; // Mã 1xx (Vàng)
+        }
+        else if (code >= 200 && code < 300) {
+            std::cout << COLOR_GREEN;  // Mã 2xx (Xanh lá)
+        } 
+        else if (code >= 300 && code < 400) {
+            std::cout << COLOR_YELLOW; // Mã 3xx (Vàng)
+        } 
+        else if (code >= 400 && code < 600) {
+            std::cout << COLOR_RED;    // Mã 4xx, 5xx (Đỏ)
+        } 
+        else {
+            std::cout << COLOR_RESET;
+        }
+
+        std::cout << line << "\n" << COLOR_RESET;
     }
 
-    if (code >= 200 && code < 300) {
-        std::cout << COLOR_GREEN;
-    } 
-    else if (code >= 300 && code < 400) {
-        std::cout << COLOR_YELLOW;
-    } 
-    else if (code >= 400 && code < 600) {
-        std::cout << COLOR_RED;
-    } 
-    else {
-        std::cout << COLOR_RESET;
-    }
-
-    std::cout << response;
-    if (response.back() != '\n') {
-        std::cout << "\n";
-    }
-
-    std::cout << COLOR_RESET << std::flush;
+    std::cout << std::flush;
 }
