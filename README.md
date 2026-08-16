@@ -66,10 +66,10 @@ Hybrid-FTP/
 Mở Terminal tại thư mục gốc của dự án (`Hybrid-FTP/`):
 
 #### A. Biên dịch Server
-Chạy lệnh sau để biên dịch toàn bộ source code của Server thành file thực thi `server.exe` nằm trong thư mục `server/`:
+Chạy lệnh sau để biên dịch toàn bộ source code của Server thành file thực thi `server.exe` nằm trong thư mục:
 
-```bash
-g++ -std=c++17 -Iinclude -Iserver/include server/src/*.cpp src/common/*.cpp -o server/server.exe -lws2_32 -lpthread
+`server/`:
+g++ -std=c++17 -Iinclude -Iserver/include -Iclient/include server/src/*.cpp client/src/rdt_receiver.cpp src/common/*.cpp -o server/server.exe -lws2_32 -lpthread
 
 `client/`:
-g++ -std=c++17 -Iinclude -Iclient/include client/src/*.cpp src/common/*.cpp -o client/client.exe -lws2_32 -lpthread
+g++ -std=c++17 -Iinclude -Iclient/include -Iserver/include client/src/*.cpp server/src/rdt_sender.cpp src/common/*.cpp -o client/client.exe -lws2_32
