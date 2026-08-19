@@ -7,7 +7,7 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
-#define PAYLOAD_SIZE 8192
+#define PAYLOAD_SIZE 1024
 #define WINDOW_SIZE 64
 #define TIMEOUT_MS 500
 

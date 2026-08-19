@@ -28,6 +28,9 @@ private:
     static void* handleClientPthread(void* arg);
 
 public:
+    SOCKET getListenSocket() const {
+        return serverSocket;
+    }
     TCPServer(int port = 8888);
     ~TCPServer();
 

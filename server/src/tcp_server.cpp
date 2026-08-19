@@ -1,12 +1,15 @@
 #include "tcp_server.h"
 #include "command_handler.h"
+#include "session_manager.h"
 #include <iostream>
 #include <algorithm>
+
+extern SessionManager g_sessionManager;
 
 TCPServer::TCPServer(int port) : port(port), serverSocket(INVALID_SOCKET), isRunning(false) {
     pthread_mutex_init(&clientsMutex, NULL);
 
-WSADATA wsaData;
+    WSADATA wsaData;
     int res = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (res != 0) {
         std::cerr << "[LỖI] WSAStartup thất bại! Mã lỗi: " << res << std::endl;
@@ -59,10 +62,19 @@ void* TCPServer::handleClientPthread(void* arg) {
         pthread_mutex_unlock(&(serverPtr->clientsMutex));
     }
 
+    // 1. Thêm session mới và in bảng ngay khi accept kết nối
+    g_sessionManager.addSession(clientSocket, clientIP, clientPort);
+    g_sessionManager.printActiveSessions();
+
     CommandHandler handler(clientSocket, clientAddr);
     handler.processCommands();
 
     std::cout << "[KẾT NỐI ĐÓNG] Client " << clientKey << " đã ngắt kết nối.\n";
+
+    // 2. Xóa session và in lại bảng khi client ngắt kết nối
+    g_sessionManager.removeSession(clientSocket);
+    g_sessionManager.printActiveSessions();
+
     closesocket(clientSocket);
 
     if (serverPtr) {

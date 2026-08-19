@@ -1,5 +1,6 @@
 #include "command_handler.h"
 #include "rdt.h"
+#include "session_manager.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -7,6 +8,8 @@
 #include <filesystem>
 #include <iomanip>
 #include <chrono>
+
+extern SessionManager g_sessionManager;
 
 namespace fs = std::filesystem;
 
@@ -259,6 +262,9 @@ void CommandHandler::handlePASS(const std::string& param) {
     }
     isAuthenticated = true;
     sendReply("230 Login successful\r\n");
+    // Cập nhật tên user và trạng thái Logged In vào bảng
+    g_sessionManager.updateAuth(clientSocket, currentUsername, true);
+    g_sessionManager.printActiveSessions(); // In lại bảng ra Console
 }
 
 void CommandHandler::handlePWD() {
