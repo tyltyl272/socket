@@ -31,7 +31,7 @@ static std::string formatSize(uintmax_t bytes) {
 }
 
 CommandHandler::CommandHandler(SOCKET socket, sockaddr_in addr)
-    : clientSocket(socket), clientAddr(addr), isAuthenticated(false), dataUdpPort(0) {
+    : clientSocket(socket), clientAddr(addr), isAuthenticated(false), dataUdpPort(8081), isPassiveMode(false) {
     
     clientIP = inet_ntoa(clientAddr.sin_addr);
 
@@ -177,15 +177,12 @@ void CommandHandler::processCommands() {
             }
             else if (cmd == "RETR") handleRETR(param);
             else if (cmd == "STOR") handleSTOR(param);
-            else if (cmd == "APPE") {
-                if (param.empty()) sendReply("501 Syntax error in parameters\r\n");
-                else handleSTOR(param);
-            }
+            else if (cmd == "APPE") handleAPPE(param);
             else if (cmd == "STOU") {
                 std::string uniqueName = "file_" + std::to_string(time(nullptr)) + ".dat";
                 handleSTOR(uniqueName);
             }
-            else if (cmd == "ABOR") sendReply("226 Abort command successful\r\n");
+            else if (cmd == "ABOR") handleABOR();
             else if (cmd == "RNFR") {
                 std::string path = currentDir + "/" + param;
                 if (fs::exists(path)) {
@@ -207,7 +204,7 @@ void CommandHandler::processCommands() {
                     renameFromPath = "";
                 }
             }
-            else if (cmd == "STAT") sendReply("211 Server status OK\r\n");
+            else if (cmd == "STAT") handleSTAT(param);
             else if (cmd == "MDTM") {
                 std::string path = currentDir + "/" + param;
                 if (fs::exists(path)) {
@@ -228,14 +225,10 @@ void CommandHandler::processCommands() {
                 } else sendReply("550 File not found\r\n");
             }
             else if (cmd == "NOOP") sendReply("200 OK\r\n");
-            else if (cmd == "TYPE") sendReply("200 Type set to " + param + "\r\n");
-            else if (cmd == "MODE") sendReply("200 Mode set to " + param + "\r\n");
-            else if (cmd == "PORT") {
-                sendReply("200 Active mode client IP/Port received\r\n");
-            }
-            else if (cmd == "PASV") {
-                sendReply("227 Entering Passive Mode (127,0,0,1,31,145)\r\n");
-            }
+            else if (cmd == "TYPE") handleTYPE(param);
+            else if (cmd == "MODE") handleMODE(param);
+            else if (cmd == "PORT") handlePORT(param);
+            else if (cmd == "PASV") handlePASV();
             else if (cmd == "HELP") {
                 sendReply("214 Supported: USER PASS PWD CWD CDUP LIST NLST RETR STOR APPE STOU DELE MKD RMD RNFR RNTO SIZE HASH STAT MDTM TYPE MODE PORT PASV ABOR NOOP QUIT\r\n");
             }
@@ -262,9 +255,8 @@ void CommandHandler::handlePASS(const std::string& param) {
     }
     isAuthenticated = true;
     sendReply("230 Login successful\r\n");
-    // Cập nhật tên user và trạng thái Logged In vào bảng
     g_sessionManager.updateAuth(clientSocket, currentUsername, true);
-    g_sessionManager.printActiveSessions(); // In lại bảng ra Console
+    g_sessionManager.printActiveSessions();
 }
 
 void CommandHandler::handlePWD() {
@@ -307,6 +299,91 @@ void CommandHandler::handleQUIT() {
     sendReply("221 Service closing control connection. Goodbye!\r\n");
 }
 
+void CommandHandler::handleTYPE(const std::string& param) {
+    std::string typeUpper = param;
+    std::transform(typeUpper.begin(), typeUpper.end(), typeUpper.begin(), ::toupper);
+
+    if (typeUpper == "A" || typeUpper == "I") {
+        sendReply("200 Type set to " + typeUpper + "\r\n");
+    } else {
+        sendReply("504 Command not implemented for that parameter\r\n");
+    }
+}
+
+void CommandHandler::handleMODE(const std::string& param) {
+    std::string modeUpper = param;
+    std::transform(modeUpper.begin(), modeUpper.end(), modeUpper.begin(), ::toupper);
+
+    if (modeUpper == "S") {
+        sendReply("200 Mode set to S\r\n");
+    } else if (modeUpper == "C" || modeUpper == "B") {
+        sendReply("504 Unimplemented MODE type. Only S (Stream) is supported\r\n");
+    } else {
+        sendReply("501 Syntax error in parameters\r\n");
+    }
+}
+
+void CommandHandler::handleSTAT(const std::string& param) {
+    if (param.empty()) {
+        std::string status = "211-Hybrid FTP Server Status:\r\n";
+        status += " Connected Client: " + clientIP + "\r\n";
+        status += " Logged User: " + (currentUsername.empty() ? "None" : currentUsername) + "\r\n";
+        status += " Data Mode: " + std::string(isPassiveMode ? "PASV" : "PORT") + "\r\n";
+        status += " Data Port: " + std::to_string(dataUdpPort) + "\r\n";
+        status += "211 End of status\r\n";
+        sendReply(status);
+    } else {
+        std::string filePath = currentDir + "/" + param;
+        if (fs::exists(filePath)) {
+            sendReply("211 Status of " + param + ": OK (" + formatSize(fs::file_size(filePath)) + ")\r\n");
+        } else {
+            sendReply("550 File not found\r\n");
+        }
+    }
+}
+
+void CommandHandler::handleABOR() {
+    sendReply("226 Abort command successful\r\n");
+}
+
+void CommandHandler::handlePORT(const std::string& param) {
+    if (param.empty()) {
+        sendReply("501 Syntax error in parameters\r\n");
+        return;
+    }
+
+    std::string cleanParam = param;
+    std::replace(cleanParam.begin(), cleanParam.end(), ',', ' ');
+    std::stringstream ss(cleanParam);
+    int h1, h2, h3, h4, p1, p2;
+
+    if (ss >> h1 >> h2 >> h3 >> h4 >> p1 >> p2) {
+        clientIP = std::to_string(h1) + "." + std::to_string(h2) + "." + std::to_string(h3) + "." + std::to_string(h4);
+        dataUdpPort = p1 * 256 + p2;
+        isPassiveMode = false;
+        sendReply("200 PORT command successful.\r\n");
+    } else {
+        try {
+            dataUdpPort = std::stoi(param);
+            isPassiveMode = false;
+            sendReply("200 PORT command successful.\r\n");
+        } catch (...) {
+            sendReply("501 Syntax error in parameters\r\n");
+        }
+    }
+}
+
+void CommandHandler::handlePASV() {
+    isPassiveMode = true;
+    if (dataUdpPort == 0) dataUdpPort = 8081;
+
+    int p1 = dataUdpPort / 256;
+    int p2 = dataUdpPort % 256;
+
+    std::string reply = "227 Entering Passive Mode (127,0,0,1," + std::to_string(p1) + "," + std::to_string(p2) + ")\r\n";
+    sendReply(reply);
+}
+
 void CommandHandler::handleRETR(const std::string& param) {
     if (param.empty()) {
         sendReply("501 Syntax error in parameters\r\n");
@@ -335,8 +412,19 @@ void CommandHandler::handleRETR(const std::string& param) {
 
     SOCKET udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (udpSocket != INVALID_SOCKET) {
+        BOOL reuse = TRUE;
+        setsockopt(udpSocket, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
+
+        if (isPassiveMode) {
+            sockaddr_in serverUdpAddr{};
+            serverUdpAddr.sin_family = AF_INET;
+            serverUdpAddr.sin_port = htons(dataUdpPort != 0 ? dataUdpPort : 8081);
+            serverUdpAddr.sin_addr.s_addr = INADDR_ANY;
+            bind(udpSocket, (sockaddr*)&serverUdpAddr, sizeof(serverUdpAddr));
+        }
+
         std::cout << "[SERVER RDT] Đang truyền file " << filenameOnly << " tới " << clientIP << ":" << targetPort << "...\n";
-        
+
         bool ok = rdt_send_file(udpSocket, filePath.c_str(), clientIP.c_str(), targetPort);
         if (ok) {
             sendReply("226 Transfer complete\r\n");
@@ -371,7 +459,7 @@ void CommandHandler::handleSTOR(const std::string& param) {
 
     sockaddr_in serverUdpAddr{};
     serverUdpAddr.sin_family = AF_INET;
-    serverUdpAddr.sin_port = htons(8081);
+    serverUdpAddr.sin_port = htons(dataUdpPort != 0 ? dataUdpPort : 8081);
     serverUdpAddr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(udpSocket, (sockaddr*)&serverUdpAddr, sizeof(serverUdpAddr)) == SOCKET_ERROR) {
@@ -383,6 +471,49 @@ void CommandHandler::handleSTOR(const std::string& param) {
     std::string filePath = currentDir + "/" + filenameOnly;
 
     if (rdt_receive_file(udpSocket, filePath.c_str(), 0)) {
+        sendReply("226 Transfer complete\r\n");
+    } else {
+        sendReply("426 Connection closed; transfer aborted\r\n");
+    }
+
+    closesocket(udpSocket);
+}
+
+void CommandHandler::handleAPPE(const std::string& param) {
+    if (param.empty()) {
+        sendReply("501 Syntax error in parameters\r\n");
+        return;
+    }
+
+    std::string filenameOnly = fs::path(param).filename().string();
+    std::string filePath = currentDir + "/" + filenameOnly;
+
+    std::string reply = "150 Ready to append to file " + filenameOnly + " via UDP\r\n";
+    sendReply(reply);
+
+    SOCKET udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (udpSocket == INVALID_SOCKET) {
+        sendReply("425 Can't open data connection\r\n");
+        return;
+    }
+
+    BOOL reuse = TRUE;
+    setsockopt(udpSocket, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse));
+
+    sockaddr_in serverUdpAddr{};
+    serverUdpAddr.sin_family = AF_INET;
+    serverUdpAddr.sin_port = htons(dataUdpPort != 0 ? dataUdpPort : 8081);
+    serverUdpAddr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(udpSocket, (sockaddr*)&serverUdpAddr, sizeof(serverUdpAddr)) == SOCKET_ERROR) {
+        sendReply("425 Can't bind data port\r\n");
+        closesocket(udpSocket);
+        return;
+    }
+
+    uintmax_t offset = (fs::exists(filePath) && !fs::is_directory(filePath)) ? fs::file_size(filePath) : 0;
+
+    if (rdt_receive_file(udpSocket, filePath.c_str(), offset)) {
         sendReply("226 Transfer complete\r\n");
     } else {
         sendReply("426 Connection closed; transfer aborted\r\n");
