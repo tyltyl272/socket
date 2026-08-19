@@ -11,6 +11,8 @@
 #define COLOR_GREEN   "\033[1;32m"
 #define COLOR_YELLOW  "\033[1;33m"
 #define COLOR_RED     "\033[1;31m"
+#define COLOR_CYAN    "\033[36m"
+#define COLOR_BOLD    "\033[1m"
 
 static void enableVTModeOnce() {
     static std::once_flag flag;
@@ -101,19 +103,19 @@ void UIManager::printProgressBar(long long currentBytes, long long totalBytes) {
     
     int pos = static_cast<int>(barWidth * progress);
 
-    std::cout << "\r[";
+    std::cout << "\r" << COLOR_CYAN << "[" << COLOR_GREEN;
     for (int i = 0; i < barWidth; ++i) {
         if (i < pos) std::cout << "=";
         else if (i == pos) std::cout << ">";
         else std::cout << " ";
     }
-    
-    std::cout << "] " << std::setw(3) << static_cast<int>(progress * 100.0f) << "% ("
-              << formatSize(currentBytes) << " / " << formatSize(totalBytes) << ")" 
+    std::cout << COLOR_CYAN << "] " << COLOR_YELLOW << COLOR_BOLD
+              << std::setw(3) << static_cast<int>(progress * 100.0f) << "% " << COLOR_RESET
+              << "(" << formatSize(currentBytes) << " / " << formatSize(totalBytes) << ")" 
               << std::flush;
 
-    if (currentBytes >= totalBytes) {
-        std::cout << " - Hoàn tất!\n" << std::flush;
+if (currentBytes >= totalBytes) {
+        std::cout << COLOR_GREEN << " - HOÀN TẤT!" << COLOR_RESET << std::endl;
     }
 }
 

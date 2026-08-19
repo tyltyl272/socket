@@ -23,6 +23,8 @@ public:
     
     void disconnect();
     bool checkConnection();
+
+    void handleRetrCommand(const std::string& filename);
 };
 
 #endif

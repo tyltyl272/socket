@@ -1,81 +1,98 @@
 #include "rdt.h"
 #include <iostream>
 #include <fstream>
+#include <vector>
 #include <cstring>
 
 bool rdt_send_file(SOCKET sockfd, const char* filename, const char* dest_ip, int dest_port) {
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "[RDT Sender] Lỗi: Không thể mở file " << filename << std::endl;
+        std::cerr << "[RDT Sender] Lỗi: Không mở được file " << filename << std::endl;
         return false;
     }
+
+    int sndbuf_size = 8 * 1024 * 1024;
+    setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, (const char*)&sndbuf_size, sizeof(sndbuf_size));
+
+    u_long mode = 1;
+    ioctlsocket(sockfd, FIONBIO, &mode);
 
     sockaddr_in dest_addr{};
     dest_addr.sin_family = AF_INET;
     dest_addr.sin_port = htons(dest_port);
     inet_pton(AF_INET, dest_ip, &dest_addr.sin_addr);
 
-    DWORD tv = TIMEOUT_SEC * 1000;
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+    std::vector<RDTPacket> packets;
+    uint32_t seq = 0;
 
-    uint32_t seq_num = 0;
-    RDTPacket packet;
-    RDTPacket ack_packet;
-    sockaddr_in ack_addr;
-    int addr_len = sizeof(ack_addr);
+    while (!file.eof()) {
+        RDTPacket pkt{};
+        file.read(pkt.data, PAYLOAD_SIZE);
+        pkt.header.payload_len = static_cast<uint16_t>(file.gcount());
+        pkt.header.seq_num = seq++;
+        pkt.header.is_ack = 0;
+        pkt.header.is_last = file.eof() ? 1 : 0;
+        
+        pkt.header.checksum = 0;
+        size_t total_len = sizeof(RDTHeader) + pkt.header.payload_len;
+        pkt.header.checksum = calculate_checksum(&pkt, total_len);
 
-    while (true) {
-        memset(&packet, 0, sizeof(packet));
-        file.read(packet.data, MAX_PAYLOAD_SIZE);
-        std::streamsize bytes_read = file.gcount();
+        packets.push_back(pkt);
+    }
+    file.close();
 
-        packet.header.seq_num = seq_num;
-        packet.header.payload_len = static_cast<uint16_t>(bytes_read);
-        packet.header.is_ack = 0;
-        packet.header.is_last = (file.eof() || bytes_read < MAX_PAYLOAD_SIZE) ? 1 : 0;
-        packet.header.checksum = 0;
+    uint32_t base = 0;
+    uint32_t next_seq = 0;
+    uint32_t total_packets = static_cast<uint32_t>(packets.size());
 
-        size_t total_pkt_size = sizeof(RDTHeader) + bytes_read;
-        packet.header.checksum = calculate_checksum(&packet, total_pkt_size);
+    DWORD timer_start = 0;
+    bool timer_running = false;
 
-        bool ack_received = false;
-        int retries = 0;
+    std::cout << "[RDT Sender] Bắt đầu truyền GBN (" << total_packets << " gói tin)..." << std::endl;
 
-        while (!ack_received && retries < MAX_RETRIES) {
-            sendto(sockfd, (const char*)&packet, (int)total_pkt_size, 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
-            std::cout << "[RDT Sender] Đã gửi Gói #" << seq_num << " (" << bytes_read << " bytes). Đang chờ ACK...\n";
+    while (base < total_packets) {
+        while (next_seq < base + WINDOW_SIZE && next_seq < total_packets) {
+            size_t pkt_size = sizeof(RDTHeader) + packets[next_seq].header.payload_len;
+            sendto(sockfd, (const char*)&packets[next_seq], pkt_size, 0, (sockaddr*)&dest_addr, sizeof(dest_addr));
+            
+            if (base == next_seq) {
+                timer_start = GetTickCount();
+                timer_running = true;
+            }
+            next_seq++;
+        }
 
-            int recv_bytes = recvfrom(sockfd, (char*)&ack_packet, sizeof(ack_packet), 0, (struct sockaddr*)&ack_addr, &addr_len);
-            if (recv_bytes >= (int)sizeof(RDTHeader)) {
-                uint16_t recv_chk = ack_packet.header.checksum;
-                ack_packet.header.checksum = 0;
-                
-                uint16_t calc_chk = calculate_checksum(&ack_packet, sizeof(RDTHeader) + ack_packet.header.payload_len);
+        RDTPacket ack_pkt;
+        sockaddr_in from_addr;
+        int from_len = sizeof(from_addr);
+        int bytes = recvfrom(sockfd, (char*)&ack_pkt, sizeof(ack_pkt), 0, (sockaddr*)&from_addr, &from_len);
 
-                if (recv_chk == calc_chk && ack_packet.header.is_ack == 1 && ack_packet.header.seq_num == seq_num) {
-                    std::cout << "[RDT Sender] Nhận ACK hợp lệ cho Gói #" << seq_num << std::endl;
-                    ack_received = true;
-                } else {
-                    std::cout << "[RDT Sender] ACK bị lỗi Checksum hoặc sai SeqNum! Gửi lại...\n";
+        if (bytes > 0) {
+            uint16_t recv_cs = ack_pkt.header.checksum;
+            ack_pkt.header.checksum = 0;
+            if (calculate_checksum(&ack_pkt, sizeof(RDTHeader)) == recv_cs && ack_pkt.header.is_ack == 1) {
+                if (ack_pkt.header.seq_num >= base) {
+                    base = ack_pkt.header.seq_num + 1;
+                    if (base == next_seq) {
+                        timer_running = false;
+                    } else {
+                        timer_start = GetTickCount();
+                        timer_running = true;
+                    }
                 }
-            } else {
-                std::cout << "[RDT Sender] Timeout! Khởi tạo gửi lại lần " << (retries + 1) << "...\n";
-                retries++;
             }
         }
 
-        if (!ack_received) {
-            std::cerr << "[RDT Sender] Lỗi: Vượt quá số lần gửi lại cho phép!\n";
-            file.close();
-            return false;
+        if (timer_running && (GetTickCount() - timer_start >= TIMEOUT_MS)) {
+            timer_start = GetTickCount();
+            for (uint32_t i = base; i < next_seq; ++i) {
+                size_t pkt_size = sizeof(RDTHeader) + packets[i].header.payload_len;
+                sendto(sockfd, (const char*)&packets[i], pkt_size, 0, (sockaddr*)&dest_addr, sizeof(dest_addr));
+            }
         }
-
-        seq_num = 1 - seq_num;
-
-        if (packet.header.is_last == 1) break;
     }
 
-    std::cout << "[RDT Sender] Truyền file thành công!\n";
-    file.close();
+    mode = 0;
+    ioctlsocket(sockfd, FIONBIO, &mode);
     return true;
 }

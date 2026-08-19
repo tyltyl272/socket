@@ -1,5 +1,8 @@
 #include "tcp_client.h"
+#include "rdt.h"
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 #include <ws2tcpip.h>
 
 TCPClient::TCPClient() : clientSocket(INVALID_SOCKET), isConnected(false) {
@@ -114,4 +117,78 @@ bool TCPClient::checkConnection() {
     }
 
     return true;
+}
+
+static std::string formatSizeHelper(long long bytes) {
+    if (bytes < 1024) return std::to_string(bytes) + " B";
+    std::stringstream ss;
+    if (bytes < 1024 * 1024) {
+        ss << std::fixed << std::setprecision(1) << (bytes / 1024.0) << " KB";
+        return ss.str();
+    }
+    if (bytes < 1024LL * 1024 * 1024) {
+        ss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0)) << " MB";
+        return ss.str();
+    }
+    ss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0 * 1024.0)) << " GB";
+    return ss.str();
+}
+
+void TCPClient::handleRetrCommand(const std::string& filename) {
+    if (!isConnected || clientSocket == INVALID_SOCKET) return;
+
+    SOCKET udpSocket = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udpSocket == INVALID_SOCKET) {
+        std::cerr << "[LỖI] Không thể tạo UDP Socket!\n";
+        return;
+    }
+
+    sockaddr_in clientUdpAddr{};
+    clientUdpAddr.sin_family = AF_INET;
+    clientUdpAddr.sin_addr.s_addr = INADDR_ANY;
+    clientUdpAddr.sin_port = htons(0);
+    bind(udpSocket, (struct sockaddr*)&clientUdpAddr, sizeof(clientUdpAddr));
+
+    int addrLen = sizeof(clientUdpAddr);
+    getsockname(udpSocket, (struct sockaddr*)&clientUdpAddr, &addrLen);
+    int localUdpPort = ntohs(clientUdpAddr.sin_port);
+
+    std::string cmd = "RETR " + filename + " " + std::to_string(localUdpPort);
+    if (!sendCommand(cmd)) {
+        closesocket(udpSocket);
+        return;
+    }
+
+    std::string response = receiveReply();
+    if (response.empty()) {
+        std::cerr << "[LỖI] Phản hồi từ Server bị trống!\n";
+        closesocket(udpSocket);
+        return;
+    }
+
+    long long fileSize = 0;
+    size_t openParen = response.find('(');
+    size_t closeParen = response.find(" bytes)", openParen);
+    if (openParen != std::string::npos && closeParen != std::string::npos) {
+        std::string sizeStr = response.substr(openParen + 1, closeParen - openParen - 1);
+        try { fileSize = std::stoll(sizeStr); } catch (...) { fileSize = 0; }
+    }
+
+    if (fileSize > 0) {
+        std::cout << "150 Opening UDP Data connection for " << filename << " (" << formatSizeHelper(fileSize) << ")\n";
+    } else {
+        std::cout << response;
+    }
+
+    if (response.rfind("150", 0) == 0 || response[0] == '1') {
+        bool success = rdt_receive_file(udpSocket, filename.c_str(), fileSize);
+        if (success) {
+            std::string finalReply = receiveReply();
+            if (!finalReply.empty()) {
+                std::cout << finalReply;
+            }
+        }
+    }
+
+    closesocket(udpSocket);
 }

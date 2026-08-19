@@ -157,7 +157,8 @@ void CommandHandler::processCommands() {
                 else {
                     std::string path = currentDir + "/" + param;
                     if (fs::exists(path) && !fs::is_directory(path)) {
-                        sendReply("213 " + std::to_string(fs::file_size(path)) + "\r\n");
+                        auto fileSize = fs::file_size(path);
+                        sendReply("213 " + formatSize(fileSize) + "\r\n");
                     } else sendReply("550 File not found\r\n");
                 }
             }
@@ -286,7 +287,6 @@ void CommandHandler::handleLIST() {
             if (entry.is_directory()) {
                 fileList += "[DIR] " + name + "\r\n";
             } else {
-                // Đã chuyển đổi từ bytes thô sang format dung lượng B/KB/MB/GB đẹp mắt
                 fileList += "[FILE] " + name + " (" + formatSize(entry.file_size()) + ")\r\n";
             }
         }
@@ -307,7 +307,12 @@ void CommandHandler::handleRETR(const std::string& param) {
         return;
     }
 
-    std::string filenameOnly = fs::path(param).filename().string();
+    std::stringstream ss(param);
+    std::string filenameOnly;
+    int clientPortFromParam = 0;
+    ss >> filenameOnly >> clientPortFromParam;
+
+    filenameOnly = fs::path(filenameOnly).filename().string();
     std::string filePath = currentDir + "/" + filenameOnly;
 
     if (!fs::exists(filePath)) {
@@ -316,15 +321,16 @@ void CommandHandler::handleRETR(const std::string& param) {
     }
 
     uintmax_t fileSize = fs::file_size(filePath);
-    std::string reply = "150 Opening UDP Data connection for " + filenameOnly + 
-                        " (" + std::to_string(fileSize) + " bytes)\r\n";
+
+    std::string reply = "150 Opening UDP Data connection for " + filenameOnly + " (" + formatSize(fileSize) + ")\r\n";
     sendReply(reply);
 
-    Sleep(100);
+    int targetPort = (clientPortFromParam != 0) ? clientPortFromParam : ((dataUdpPort != 0) ? dataUdpPort : 8081);
 
     SOCKET udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (udpSocket != INVALID_SOCKET) {
-        int targetPort = (dataUdpPort != 0) ? dataUdpPort : 8081;
+        std::cout << "[SERVER RDT] Đang truyền file " << filenameOnly << " tới " << clientIP << ":" << targetPort << "...\n";
+        
         bool ok = rdt_send_file(udpSocket, filePath.c_str(), clientIP.c_str(), targetPort);
         if (ok) {
             sendReply("226 Transfer complete\r\n");
@@ -370,7 +376,7 @@ void CommandHandler::handleSTOR(const std::string& param) {
 
     std::string filePath = currentDir + "/" + filenameOnly;
 
-    if (rdt_receive_file(udpSocket, filePath.c_str())) {
+    if (rdt_receive_file(udpSocket, filePath.c_str(), 0)) {
         sendReply("226 Transfer complete\r\n");
     } else {
         sendReply("426 Connection closed; transfer aborted\r\n");

@@ -63,7 +63,6 @@ int main(int argc, char* argv[]) {
         std::cout << "==================================================" << std::endl;
     }
 
-    // Validate dải Port an toàn
     if (port < 1024 || port > 65535) {
         std::cout << "[CẢNH BÁO] Port không hợp lệ hoặc thuộc dải Privileged (1-1023). Tự động đặt về 8888.\n";
         port = 8888;

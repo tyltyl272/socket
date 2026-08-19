@@ -23,6 +23,34 @@ void handleSignal(int signal) {
     }
 }
 
+long long parseFileSizeFromResponse(const std::string& response) {
+    size_t start = response.find('(');
+    size_t end = response.find(')', start);
+
+    if (start == std::string::npos || end == std::string::npos || end <= start) {
+        return 0;
+    }
+
+    std::string content = response.substr(start + 1, end - start - 1);
+    std::stringstream ss(content);
+    
+    double value = 0.0;
+    std::string unit = "";
+    ss >> value >> unit;
+
+    for (auto &c : unit) c = toupper(c);
+
+    if (unit == "MB") {
+        return static_cast<long long>(value * 1024 * 1024);
+    } else if (unit == "KB") {
+        return static_cast<long long>(value * 1024);
+    } else if (unit == "GB") {
+        return static_cast<long long>(value * 1024 * 1024 * 1024);
+    } else {
+        return static_cast<long long>(value);
+    }
+}
+
 int main(int argc, char* argv[]) {
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
@@ -37,40 +65,24 @@ int main(int argc, char* argv[]) {
         fs::create_directories("download");
     }
 
-    if (argc >= 2) {
-        serverIP = argv[1];
-    }
+    if (argc >= 2) serverIP = argv[1];
     if (argc >= 3) {
-        try {
-            serverPort = std::stoi(argv[2]);
-        } catch (...) {
-            serverPort = 0;
-        }
+        try { serverPort = std::stoi(argv[2]); } catch (...) { serverPort = 0; }
     }
 
     UIManager::printHeader();
 
     if (serverIP.empty()) {
-        std::cout << "Nhập IP Server (Ấn Enter để dùng 127.0.0.1): ";
+        std::cout << "Nhập IP Server: ";
         std::getline(std::cin, serverIP);
-        if (serverIP.empty()) {
-            serverIP = "127.0.0.1";
-        }
+        if (serverIP.empty()) serverIP = "127.0.0.1";
     }
 
     if (serverPort <= 0 || serverPort > 65535) {
         std::cout << "Nhập Port Server (Ấn Enter để dùng 8888): ";
         std::string inputPort;
         std::getline(std::cin, inputPort);
-        if (inputPort.empty()) {
-            serverPort = 8888;
-        } else {
-            try {
-                serverPort = std::stoi(inputPort);
-            } catch (...) {
-                serverPort = 8888;
-            }
-        }
+        serverPort = inputPort.empty() ? 8888 : std::stoi(inputPort);
     }
 
     std::cout << "Đang kết nối tới Server (" << serverIP << ":" << serverPort << ")..." << std::endl;
@@ -82,17 +94,12 @@ int main(int argc, char* argv[]) {
     }
 
     std::string welcomeMsg = client.receiveReply();
-    if (!welcomeMsg.empty()) {
-        UIManager::printResponse(welcomeMsg);
-    }
+    if (!welcomeMsg.empty()) UIManager::printResponse(welcomeMsg);
 
     std::string inputCommand;
     while (client.checkConnection()) {
         UIManager::printPrompt();
-        if (!std::getline(std::cin, inputCommand)) {
-            break;
-        }
-
+        if (!std::getline(std::cin, inputCommand)) break;
         if (inputCommand.empty()) continue;
 
         std::stringstream ss(inputCommand);
@@ -112,9 +119,7 @@ int main(int argc, char* argv[]) {
         }
 
         std::string response = client.receiveReply();
-        if (!response.empty()) {
-            UIManager::printResponse(response);
-        }
+        if (!response.empty()) UIManager::printResponse(response);
 
         if (response.rfind("150", 0) == 0) {
             SOCKET udpSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -154,7 +159,9 @@ int main(int argc, char* argv[]) {
 
                     if (bind(udpSocket, (sockaddr*)&clientUdpAddr, sizeof(clientUdpAddr)) != SOCKET_ERROR) {
                         std::string savePath = "download/" + filename;
-                        rdt_receive_file(udpSocket, savePath.c_str());
+                        
+                        long long total_file_size = parseFileSizeFromResponse(response);
+                        rdt_receive_file(udpSocket, savePath.c_str(), total_file_size);
 
                         std::string finalReply = client.receiveReply();
                         if (!finalReply.empty()) UIManager::printResponse(finalReply);
@@ -167,9 +174,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (upperCmd == "QUIT") {
-            break;
-        }
+        if (upperCmd == "QUIT") break;
     }
 
     client.disconnect();
