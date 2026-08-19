@@ -37,9 +37,11 @@ Hybrid-FTP/
 ├── server/                      --> Toàn bộ code phía Server
 │   ├── include/                 --> Chứa các file khai báo (.h) phía Server
 │   │   ├── command_handler.h    --> Khai báo bộ xử lý các lệnh FTP
+|   |   ├── session_manager.h
 │   │   └── tcp_server.h         --> Khai báo Socket TCP Server & luồng
 │   ├── src/                     --> Chứa các file triển khai (.cpp) phía Server
 │   │   ├── command_handler.cpp  --> Code logic xử lý các lệnh FTP
+|   |   ├── session_manager.cpp
 │   │   ├── main_server.cpp      --> Hàm main() khởi chạy Server
 │   │   ├── rdt_sender.cpp       --> Code truyền file bằng UDP RDT phía Server
 │   │   └── tcp_server.cpp       --> Code Socket TCP listen/accept (pthread)
