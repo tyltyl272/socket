@@ -1,23 +1,32 @@
 #ifndef COMMAND_HANDLER_H
 #define COMMAND_HANDLER_H
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
+#if defined(_WIN32) || defined(_WIN64)
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+#else
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    typedef int SOCKET;
+    #define INVALID_SOCKET -1
+    #define SOCKET_ERROR -1
+    #define closesocket close
+    #define BOOL bool
+    #define TRUE true
+    #define FALSE false
+#endif
+
 #include <string>
 
 class CommandHandler {
-public:
-    CommandHandler(SOCKET socket, sockaddr_in addr);
-    ~CommandHandler();
-
-    void processCommands();
-
 private:
     SOCKET clientSocket;
     sockaddr_in clientAddr;
     std::string clientIP;
-    bool isAuthenticated;
     std::string currentUsername;
+    bool isAuthenticated;
     std::string currentDir;
     std::string renameFromPath;
     int dataUdpPort;
@@ -32,6 +41,7 @@ private:
     void handlePWD();
     void handleCWD(const std::string& param);
     void handleLIST();
+    void handleQUIT();
     void handleTYPE(const std::string& param);
     void handleMODE(const std::string& param);
     void handleSTAT(const std::string& param);
@@ -41,7 +51,12 @@ private:
     void handleRETR(const std::string& param);
     void handleSTOR(const std::string& param);
     void handleAPPE(const std::string& param);
-    void handleQUIT();
+    void handleHASH(const std::string& param);
+
+public:
+    CommandHandler(SOCKET socket, sockaddr_in addr);
+    ~CommandHandler();
+    void processCommands();
 };
 
-#endif // COMMAND_HANDLER_H
+#endif

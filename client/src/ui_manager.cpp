@@ -97,12 +97,14 @@ static std::string formatSize(long long bytes) {
 void UIManager::printProgressBar(long long currentBytes, long long totalBytes) {
     if (totalBytes <= 0) return;
     
-    int barWidth = 35;
+    // Giảm barWidth xuống 20 để tránh vượt quá độ rộng Terminal gây tự động xuống dòng
+    int barWidth = 20; 
     float progress = static_cast<float>(currentBytes) / totalBytes;
     if (progress > 1.0f) progress = 1.0f;
     
     int pos = static_cast<int>(barWidth * progress);
 
+    // Xóa bớt khoảng trắng dư bằng ký tự \r đưa con trỏ về đầu dòng
     std::cout << "\r" << COLOR_CYAN << "[" << COLOR_GREEN;
     for (int i = 0; i < barWidth; ++i) {
         if (i < pos) std::cout << "=";
@@ -111,10 +113,10 @@ void UIManager::printProgressBar(long long currentBytes, long long totalBytes) {
     }
     std::cout << COLOR_CYAN << "] " << COLOR_YELLOW << COLOR_BOLD
               << std::setw(3) << static_cast<int>(progress * 100.0f) << "% " << COLOR_RESET
-              << "(" << formatSize(currentBytes) << " / " << formatSize(totalBytes) << ")" 
+              << "(" << formatSize(currentBytes) << " / " << formatSize(totalBytes) << ")   " 
               << std::flush;
 
-if (currentBytes >= totalBytes) {
+    if (currentBytes >= totalBytes) {
         std::cout << COLOR_GREEN << " - HOÀN TẤT!" << COLOR_RESET << std::endl;
     }
 }

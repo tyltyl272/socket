@@ -59,13 +59,18 @@ bool rdt_receive_file(SOCKET sockfd, const char* save_filename, long long total_
 
                 auto now = std::chrono::steady_clock::now();
                 bool is_last = (packet.header.is_last == 1);
+                
+                // Cập nhật Progress Bar mỗi 100ms hoặc khi nhận gói tin cuối cùng
                 if (std::chrono::duration_cast<std::chrono::milliseconds>(now - last_ui_update).count() >= 100 || is_last) {
-                    UIManager::printProgressBar(total_received_bytes, total_file_size);
+                    // Nếu là gói cuối, đảm bảo dung lượng truyền vào bằng đúng dung lượng đã nhận để Bar nhảy trọn 100%
+                    long long target_size = (is_last || total_file_size <= 0) ? total_received_bytes : total_file_size;
+                    UIManager::printProgressBar(total_received_bytes, target_size);
                     last_ui_update = now;
                 }
 
                 if (is_last) {
-                    std::cout << "\n[RDT Receiver] Tải file hoàn tất qua GBN!" << std::endl;
+                    // Bỏ \n ở đầu vì printProgressBar đã tự kết thúc dòng khi hoàn tất 100%
+                    std::cout << "[RDT Receiver] Tải file hoàn tất qua GBN!" << std::endl;
                     break;
                 }
             } else if (expected_seq > 0) {
